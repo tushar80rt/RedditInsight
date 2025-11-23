@@ -55,7 +55,7 @@ This project transforms that chaos into actionable insights using AI-powered age
 Watch the AI agents in action:  
 
 <p align="center">
-  <img src="assets/workflowredditCrewai.gif" alt="demo" width="600"/>
+  <img src="assets/workflowredditCrewai%20(1).gif" alt="demo" width="600"/>
 </p>
 
 ---
