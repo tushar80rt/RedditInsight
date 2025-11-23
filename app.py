@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
-from agents import fetch_posts, generate_report, create_post, generate_comment_from_best
+from agents import fetch_posts, generate_report, create_post, generate_comment_from_best, ask_helper
 from dotenv import load_dotenv
 import os
 import traceback
+
 
 # ---------------- Load environment variables ---------------- #
 dotenv_path = os.path.join(os.path.dirname(__file__), "api.env")
@@ -13,13 +14,13 @@ load_dotenv(dotenv_path)
 
 # ---------------- Streamlit Page Config ---------------- #
 st.set_page_config(
-    page_title="https://FactCheck-agent.com", 
+    page_title="https://FactCheck-agent.com",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # ================= UI Styling =================
-st.markdown(""" 
+st.markdown("""
 <style>
 .stApp { background-color: #0E1117; color: #FAFAFA; }
 .main-header { font-size: 2.8rem; color: #00D4B1; text-align: center; font-weight: 800; margin-bottom: 0.2rem; letter-spacing: -0.5px; }
@@ -37,15 +38,15 @@ st.markdown("""
 .stRadio > div { background-color: #262730; padding: 1rem; border-radius: 8px; }
 label { font-weight: 600 !important; margin-bottom: 0.5rem; display: block; color: #CCC !important; }
 .main-title { font-size: 40px; font-weight: bold; display: flex; align-items: center; }
-.main-title img { height: 70px; margin-left: 20px; vertical-align: middle; }
+.main-title img { height: 50px; margin-left: 20px; vertical-align: middle; }
 .subtitle { font-size: 20px; color: #AAAAAA; }
 </style>
 <div class="header">
   <div class="main-title">
-    Reddit Insight Agents 
-    <img src="https://repository-images.githubusercontent.com/615510678/93880a8f-edb6-4ef2-88d1-abff2651702e" alt="Camel-AI Logo"> 
-    <span style="margin-left:40px;">&</span> 
-    <img src="https://redditinc.com/hubfs/Reddit%20Inc/Brand/Reddit_Lockup_Logo.svg" alt="LangGraph Logo"> 
+    Reddit Insight Agents
+    <img src="https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/crewai-brand-color.png" alt="Camel-AI Logo">
+    <span style="margin-left:40px;">&</span>
+    <img src="https://redditinc.com/hubfs/Reddit%20Inc/Brand/Reddit_Lockup_Logo.svg" alt="LangGraph Logo">
   </div>
   <div class="subtitle"> Analyzing Reddit Posts for Accuracy </div>
   <br>
@@ -57,20 +58,20 @@ col1, col2 = st.columns(2)
 
 with col1:
     subreddits_input = st.text_input(
-        label="🌐 Subreddits",
+        label="🌐Subreddits",
         placeholder="e.g. news, science, india",
         help="Enter subreddit names without the 'r/' prefix."
     )
 
 with col2:
     keywords_input = st.text_input(
-        label="📝 Keywords",
+        label="📝Keywords",
         placeholder="e.g. AI, stock market, elections",
         help="Keywords to search for in posts and comments."
     )
 
 with st.sidebar:
-    st.image("./assets/openai-text.png", width=150)
+    st.image("./assets/openai-text.png", width=200)
     Openai_key = st.text_input("OpenAI API key", value=os.getenv("OPENAI_API_KEY", ""), type="password")
     reddit_key = st.text_input("Reddit_client_secret", value=os.getenv("REDDIT_CLIENT_SECRET", ""), type="password")
 
@@ -81,13 +82,13 @@ with st.sidebar:
         st.success("Keys saved for this session")
 
     post_limit = st.number_input(
-        "Posts per subreddit", 
+        "Posts per subreddit",
         min_value=1, max_value=20, value=5, step=1,
         help="Number of posts to fetch from each subreddit"
     )
 
     comment_limit = st.number_input(
-        "Comments per post", 
+        "Comments per post",
         min_value=1, max_value=10, value=3, step=1,
         help="Number of top comments to analyze per post"
     )
@@ -124,7 +125,7 @@ with st.sidebar:
     st.write("Generate a new comment based on the most liked comment from fetched posts.")
 
     comment_post_index = st.number_input(
-        "Select Post Index", 
+        "Select Post Index",
         min_value=1, max_value=20, value=1, step=1,
         help="Choose the index of the post from which you want to generate a new comment."
     )
@@ -151,19 +152,20 @@ with st.sidebar:
         except Exception as e:
             st.error(f"Error generating comment: {e}")
 
+
     st.markdown("---")
     st.subheader("About")
     st.markdown("""
-    This app helps you analyze Reddit posts and comments to identify misinformation, 
-    assess sentiment, and generate insightful comments. 
+    This app helps you analyze Reddit posts and comments to identify misinformation,
+    assess sentiment, and generate insightful comments.
 
-    Key features include:  
-    - Automatic fetching and analysis of posts from your chosen subreddits.  
-    - Fact-checking and sentiment analysis for comments to identify misleading content.  
-    - Generation of new comments inspired by top-liked comments.  
-    - Ability to automatically post your generated comments or custom posts to Reddit.  
+    Key features include:
+    - Automatic fetching and analysis of posts from your chosen subreddits.
+    - Fact-checking and sentiment analysis for comments to identify misleading content.
+    - Generation of new comments inspired by top-liked comments.
+    - Ability to automatically post your generated comments or custom posts to Reddit.
 
-    It leverages AI agents for content summarization, fact-checking, and comment generation 
+    It leverages AI agents for content summarization, fact-checking, and comment generation
     to provide accurate and meaningful insights, while allowing interactive engagement with Reddit content.
     """)
 
@@ -178,7 +180,7 @@ if analyze_btn:
     if not subreddits:
         st.error("Please enter at least one valid subreddit!")
         st.stop()
-    
+
     if not keywords:
         st.error("Please enter at least one valid keyword!")
         st.stop()
@@ -212,9 +214,9 @@ if analyze_btn:
         try:
             # Card layout
             st.markdown('<div class="card">', unsafe_allow_html=True)
-            cols = st.columns([1, 3])  
+            cols = st.columns([1, 3])
 
-            # Thumbnail on left
+
             with cols[0]:
                 if post.get("Post Thumbnail"):
                     st.image(post["Post Thumbnail"], use_container_width=True)
@@ -257,7 +259,7 @@ if analyze_btn:
         report_data = generate_report(posts_data)
         progress_bar.progress(100)
         status_text.text("Analysis complete")
-        
+
         if report_data:
             df = pd.DataFrame(report_data)
             st.markdown("---")
@@ -274,7 +276,7 @@ if analyze_btn:
                     fact_check_counts = df["Fact Check"].value_counts()
                     st.metric("Unique Claims", len(fact_check_counts))
             st.write("### Detailed Results")
-            st.dataframe(df, use_container_width=True, height=400)
+            st.dataframe(df, width="stretch", height=400)
             st.write("### Charts")
             col1, col2 = st.columns(2)
             with col1:
@@ -294,7 +296,7 @@ if analyze_btn:
                 data=csv,
                 file_name="reddit_analysis_report.csv",
                 mime="text/csv",
-                use_container_width=True
+                width="stretch"
             )
         else:
             st.info("No matching comments found for analysis.")
@@ -303,3 +305,167 @@ if analyze_btn:
         st.error(f"Error: {str(e)}")
         print("Exception in generate_report():", e)
         traceback.print_exc()
+
+
+
+# ---------------- Floating Helper Agent ---------------- #
+
+if "helper_expanded" not in st.session_state:
+    st.session_state.helper_expanded = False
+if "helper_question" not in st.session_state:
+    st.session_state.helper_question = ""
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+
+def toggle_helper():
+    st.session_state.helper_expanded = not st.session_state.helper_expanded
+
+def handle_helper():
+    question = st.session_state.helper_question.strip()
+    if question:
+
+        answer = ask_helper(question)
+
+        st.session_state.chat_history.append({"Q": question, "A": answer})
+        st.session_state.helper_question = ""
+
+
+
+st.markdown("""
+<style>
+/* Floating Help Button */
+.helper-btn {
+  position: fixed;
+  bottom: 20px;   /* distance from bottom */
+  right: 20px;    /* distance from right */
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00D4B1, #008080);
+  color: #000;
+  font-size: 30px;
+  text-align: center;
+  line-height: 60px;
+  cursor: pointer;
+  z-index: 9999;
+  box-shadow: 0 6px 15px rgba(0,0,0,0.3);
+}
+
+/* Helper Chat Box */
+.helper-box {
+  position: fixed;
+  bottom: 90px;  /* placed above the button */
+  right: 20px;
+  width: 360px;
+  max-height: 450px;
+  background-color: #1E1E2F;
+  color: #FAFAFA;
+  border-radius: 16px;
+  padding: 15px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  z-index: 9998;
+  overflow-y: auto;
+}
+
+.helper-box textarea {
+  width: 100%;
+  border-radius: 10px;
+  padding: 8px;
+  margin-top: 5px;
+  background-color: #2A2A3D;
+  color: #FAFAFA;
+  border: none;
+  resize: none;
+}
+
+.helper-box button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 10px;
+  background: linear-gradient(135deg,#00D4B1,#008080);
+  color: #000;
+  font-weight: bold;
+  border: none;
+  cursor: pointer;
+}
+
+.helper-question {
+  background-color: #2A2A3D;
+  border-radius: 10px;
+  padding: 8px;
+  margin-top: 8px;
+  font-weight: bold;
+}
+
+.helper-answer {
+  background-color: #262730;
+  border-radius: 10px;
+  padding: 8px;
+  margin-top: 4px;
+  font-size: 14px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+</style>
+
+""", unsafe_allow_html=True)
+
+
+
+st.button("💡Need Help?", key="helper_toggle_btn", on_click=toggle_helper, help="Open Helper Chat")
+
+
+if st.session_state.helper_expanded:
+    st.markdown('<div id="helper-box">', unsafe_allow_html=True)
+
+
+    st.text_area("Ask your question...", key="helper_question", height=50)
+    st.button("Ask", on_click=handle_helper)
+
+
+    if st.session_state.chat_history:
+        for chat in st.session_state.chat_history:
+            st.markdown(f'<div class="helper-question">Q: {chat["Q"]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="helper-answer">A: {chat["A"]}</div>', unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

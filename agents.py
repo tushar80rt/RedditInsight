@@ -2,11 +2,7 @@ import os
 import time
 import traceback
 import praw
-from camel.agents import ChatAgent
-from camel.toolkits import RedditToolkit
-from camel.models import ModelFactory
-from camel.types import ModelPlatformType, ModelType
-from camel.configs import ChatGPTConfig
+from crewai import Agent, Task, Crew, Process
 from dotenv import load_dotenv
 
 # ---------------- Load environment variables ---------------- #
@@ -22,16 +18,6 @@ REDDIT_PASSWORD = os.getenv("REDDIT_PASSWORD")
 if not all([REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_AGENT, REDDIT_USERNAME, REDDIT_PASSWORD]):
     raise ValueError("Please set Reddit API credentials (including username & password) in your .env file!")
 
-# ---------------- Initialize OpenAI model ---------------- #
-model = ModelFactory.create(
-    model_platform=ModelPlatformType.OPENAI,
-    model_type=ModelType.GPT_4O,
-    model_config_dict=ChatGPTConfig(temperature=0.2).as_dict(),
-)
-
-# ---------------- Initialize Reddit Toolkit ---------------- #
-reddit_toolkit = RedditToolkit(retries=3, delay=2, timeout=120)
-
 # ---------------- Initialize PRAW for posting ---------------- #
 reddit = praw.Reddit(
     client_id=REDDIT_CLIENT_ID,
@@ -41,88 +27,82 @@ reddit = praw.Reddit(
     password=REDDIT_PASSWORD
 )
 
-# ---------------- Collector Agent ---------------- #
-collector_agent = ChatAgent(
-    """
-You are a Reddit Data Collector & Summarizer Agent.  
-
-For each post, generate exactly:
-
-Post Title: <Post title>
-Collector Summary: <3-5 sentence summary>
-Comments:
-1. Comment Body: <first comment>
-   Upvotes: <number>
-2. Comment Body: <second comment>
-   Upvotes: <number>
-
-Overall Discussion Tone: <Neutral / Supportive / Critical / Mixed>
-
-If no data, return: "No relevant data found."
-""",
-    model=model,
-    tools=[reddit_toolkit.collect_top_posts]
+# ---------------- Agents ---------------- #
+collector_agent = Agent(
+    role="Reddit Data Collector & Summarizer",
+    goal="Collect top posts and summarize discussions with structured output",
+    backstory="An expert Reddit analyst who reads threads and summarizes their tone, content, and top comments clearly.",
+    llm="gpt-4o-mini",
 )
 
-# ---------------- Sentiment Agent ---------------- #
-sentiment_agent = ChatAgent(
-    """
-You are a Sentiment Analysis Agent.  
-
-Return numeric sentiment score between -1.0 and +1.0
-Only the number.
-""",
-    model=model,
-    tools=[]
+sentiment_agent = Agent(
+    role="Sentiment Analysis Agent",
+    goal="Return a numeric sentiment score between -1.0 and +1.0",
+    backstory="A sentiment scoring AI that only outputs a single number.",
+    llm="gpt-4o-mini",
 )
 
-# ---------------- Fact Checker Agent ---------------- #
-factchecker_agent = ChatAgent(
-    """
-You are a Fact-Checking Agent.  
-
-If correct → 'True'
-If incorrect → 'False'
-If cannot verify → 'Unverified'
-Output only one word.
-""",
-    model=model,
-    tools=[]
+factchecker_agent = Agent(
+    role="Fact-Checking Agent",
+    goal="Verify factual accuracy of comments and output True, False, or Unverified",
+    backstory="A concise fact-checking AI that only outputs one word.",
+    llm="gpt-4o-mini",
 )
 
-# ---------------- User Comment Generator ---------------- #
-comment_agent = ChatAgent(
-    """
-You are a Reddit Comment Generator Agent.
-Given the most liked comment from a post, generate a new comment
-that is similar in style but adds value or a different perspective.
-Return only the comment text.
-""",
-    model=model,
-    tools=[]
+comment_agent = Agent(
+    role="Reddit Comment Generator",
+    goal="Given a top comment, generate a new one with similar tone but fresh perspective",
+    backstory="An AI that mimics human Redditors' tone and insight in comments.",
+    llm="gpt-4o-mini",
 )
 
+helper_agent = Agent(
+    role="Helper",
+    goal="Explain and resolve project-related doubts in simple terms",
+    backstory=(
+        "A friendly AI tutor that explains the functioning of agents, Reddit posting, and fetching logic. "
+        "Provides solutions, examples, and fixes clearly."
+    ),
+    llm="gpt-4o-mini",
+)
+
+# ---------------- Helper Function ---------------- #
+def ask_helper(question: str):
+    try:
+        task = Task(
+            description=question,
+            agent=helper_agent,
+            expected_output="A clear, beginner-friendly explanation relevant to the Reddit Insight Agent project."
+        )
+        crew = Crew(agents=[helper_agent], tasks=[task], process=Process.sequential)
+        result = crew.kickoff()
+        return result.raw if hasattr(result, 'raw') else str(result)
+    except Exception as e:
+        print("❌ Error in Helper Agent:", e)
+        return "Sorry, Helper Agent could not answer."
+
+# ---------------- Comment Generator ---------------- #
 def generate_comment_from_best(fetched_comments):
-    """
-    fetched_comments: list of dicts with 'Comment Body' and 'Upvotes'
-    """
     if not fetched_comments:
         return None
 
-    # Most liked comment
     best_comment = max(fetched_comments, key=lambda c: c.get('Upvotes', 0))
     prompt = f"Original Comment: {best_comment['Comment Body']}\nGenerate a new comment in a similar style."
 
     try:
-        resp = comment_agent.step(prompt)
-        new_comment = resp.msgs[0].content.strip()
-        return new_comment
+        task = Task(
+            description=prompt,
+            agent=comment_agent,
+            expected_output="A natural Reddit-style comment written in similar tone and context."
+        )
+        crew = Crew(agents=[comment_agent], tasks=[task], process=Process.sequential)
+        result = crew.kickoff()
+        return result.raw.strip() if hasattr(result, 'raw') else str(result).strip()
     except Exception as e:
         print("Error generating comment:", e)
         return None
-    
 
-
+# ---------------- Fetch Reddit Posts ---------------- #
 def fetch_posts(subreddits, keywords=None, post_limit=None, comment_limit=None):
     raw_data = []
     try:
@@ -130,22 +110,18 @@ def fetch_posts(subreddits, keywords=None, post_limit=None, comment_limit=None):
         comment_limit = comment_limit or 3
 
         for subreddit in subreddits:
-            top_posts = reddit_toolkit.reddit.subreddit(subreddit).top(limit=post_limit)
+            top_posts = reddit.subreddit(subreddit).top(limit=post_limit)
             for post in top_posts:
                 post.comments.replace_more(limit=0)
                 all_comments = post.comments.list()
 
-                
                 filtered_comments = [
                     {"Comment Body": c.body, "Upvotes": getattr(c, "score", 0)}
                     for c in all_comments
                     if not keywords or any(kw.lower() in c.body.lower() for kw in keywords)
                 ]
 
-              
                 sorted_comments = sorted(filtered_comments, key=lambda x: x["Upvotes"], reverse=True)
-
-                
                 post_comments = sorted_comments[:comment_limit]
 
                 print(f"DEBUG: Post: {post.title}, Top Comments Fetched: {len(post_comments)}")
@@ -154,9 +130,22 @@ def fetch_posts(subreddits, keywords=None, post_limit=None, comment_limit=None):
                     comments_text = "\n".join(
                         [f"{i+1}. {c['Comment Body']}" for i, c in enumerate(post_comments)]
                     )
-                    prompt = f"Subreddit: {subreddit}\nPost: {post.title}\nComments:\n{comments_text}"
-                    collector_summary = collector_agent.step(prompt)
-                    collector_text = collector_summary.msgs[0].content.strip()
+                    prompt = (
+                        f"Subreddit: {subreddit}\nPost: {post.title}\nComments:\n{comments_text}\n\n"
+                        "For each post, generate exactly:\n"
+                        "Post Title: <Post title>\nCollector Summary: <3-5 sentence summary>\n"
+                        "Comments:\n1. Comment Body: <first comment>\n   Upvotes: <number>\n"
+                        "2. Comment Body: <second comment>\n   Upvotes: <number>\n"
+                        "Overall Discussion Tone: <Neutral / Supportive / Critical / Mixed>"
+                    )
+                    task = Task(
+                        description=prompt,
+                        agent=collector_agent,
+                        expected_output="A structured summary with post title, summary, top comments, and tone classification."
+                    )
+                    crew = Crew(agents=[collector_agent], tasks=[task], process=Process.sequential)
+                    result = crew.kickoff()
+                    collector_text = result.raw.strip() if hasattr(result, 'raw') else str(result).strip()
                 except Exception:
                     collector_text = "Collector agent failed"
 
@@ -179,7 +168,6 @@ def fetch_posts(subreddits, keywords=None, post_limit=None, comment_limit=None):
         traceback.print_exc()
         return []
 
-
 # ---------------- Generate Report ---------------- #
 def generate_report(posts_data):
     report = []
@@ -190,19 +178,27 @@ def generate_report(posts_data):
             verdict = "Unverified"
 
             try:
-                sentiment_resp = sentiment_agent.step(
-                    f"Analyze sentiment (positive=1, neutral=0, negative=-1). Comment: {body}"
+                task = Task(
+                    description=f"Analyze sentiment (positive=1, neutral=0, negative=-1). Comment: {body}",
+                    agent=sentiment_agent,
+                    expected_output="A single numeric sentiment score between -1.0 and +1.0"
                 )
-                sentiment_score = float(sentiment_resp.msgs[0].content.strip())
+                crew = Crew(agents=[sentiment_agent], tasks=[task], process=Process.sequential)
+                result = crew.kickoff()
+                sentiment_score = float(result.raw.strip()) if hasattr(result, 'raw') else float(str(result).strip())
             except Exception as e:
                 print("Error in sentiment analysis:", e)
                 traceback.print_exc()
 
             try:
-                fact_resp = factchecker_agent.step(
-                    f"Fact check this comment. Respond only with True, False, or Unverified:\n{body}"
+                task = Task(
+                    description=f"Fact check this comment. Respond only with True, False, or Unverified:\n{body}",
+                    agent=factchecker_agent,
+                    expected_output="One of: True, False, or Unverified"
                 )
-                verdict = fact_resp.msgs[0].content.strip() if fact_resp.msgs else "Unverified"
+                crew = Crew(agents=[factchecker_agent], tasks=[task], process=Process.sequential)
+                result = crew.kickoff()
+                verdict = result.raw.strip() if hasattr(result, 'raw') else str(result).strip()
             except Exception as e:
                 print("Error in fact checking:", e)
                 traceback.print_exc()
@@ -220,14 +216,11 @@ def generate_report(posts_data):
             })
     return report
 
+# ---------------- Create Reddit Post ---------------- #
 def create_post(subreddit, title, body, flair_text=None):
-    """
-    Create a new Reddit post based on user input using PRAW.
-    flair_text: optional, required by some subreddits
-    """
     try:
         subreddit_obj = reddit.subreddit(subreddit)
-        
+
         if flair_text:
             flair_id = None
             for ft in subreddit_obj.flair.link_templates:
@@ -237,7 +230,7 @@ def create_post(subreddit, title, body, flair_text=None):
             submission = subreddit_obj.submit(title=title, selftext=body, flair_id=flair_id)
         else:
             submission = subreddit_obj.submit(title=title, selftext=body)
-        
+
         print(f"✅ Post created: https://reddit.com{submission.permalink}")
         return submission
     except Exception as e:
