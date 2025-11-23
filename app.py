@@ -44,7 +44,7 @@ label { font-weight: 600 !important; margin-bottom: 0.5rem; display: block; colo
 <div class="header">
   <div class="main-title">
     Reddit Insight Agents
-    <img src="https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/crewai-brand-color.png" alt="Camel-AI Logo">
+    <img src="https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/crewai-brand-color.png" alt="Crew-AI Logo">
     <span style="margin-left:40px;">&</span>
     <img src="https://redditinc.com/hubfs/Reddit%20Inc/Brand/Reddit_Lockup_Logo.svg" alt="LangGraph Logo">
   </div>
